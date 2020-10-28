@@ -12,28 +12,330 @@ function parseTime()
     var_dump($time);
 }
 
+function dataLog($data, $file = "test.json")
+{
+    $dir = "./logdata/" . date("Y-m-d");
+    if (!is_dir($dir)) {
+        mkdir($dir);
+    }
+    file_put_contents($dir . "/" . $file, json_encode($data, JSON_UNESCAPED_UNICODE));
+}
+
 exportData();
 function exportData()
 {
-    /*职业 各层 各区 各工会 统计*/
-    $config = getConfig();
-    $jobs = $config["job"];
+    /*统计各个层,区,职业总人数*/
+//    exportNumData();
+    /*统计层,区,职业关联人数*/
+    exportAreaJobPassData();
+}
 
+/**
+ * 人数统计
+ */
+function exportNumData()
+{
+    $config = getConfig();
     $dbFile = date("Y-m-d") . "dn_rank.db";
     $db     = new Sparrow();
     $db->setDb(["type" => "sqlite3", "database" => $dbFile]);
 
-    /*职业层*/
+    $dir = "./rankdata/" . date("Y-m-d") . "/总数";
+    if (!is_dir($dir)) {
+        mkdir($dir);
+    }
+    /*层数人数统计*/
+    $Jobdata = $db->from("rank_data")
+        ->groupBy("pass_num")
+        ->sortDesc("pass_num")
+        ->select("pass_num,count(*) as num")
+        ->many();
+    toCsv(
+        $Jobdata,
+        ["层数", "数量"],
+        $dir . "/层数统计.csv"
+    );
+    /*职业数量统计*/
     $Jobdata = $db->from("rank_data")
         ->groupBy("job_id")
-        ->orderBy("job_id")
-        ->select("count(*) as num,job_id,dn_job")
+        ->sortDesc("num")
+        ->select("dn_job,count(*) as num")
         ->many();
+    toCsv(
+        $Jobdata,
+        ["职业", "数量"],
+        $dir . "/职业统计.csv"
+    );
+    /*区统计*/
+    $areaData = $db->from("rank_data")
+        ->groupBy("area_id")
+        ->sortDesc("num")
+        ->select("dn_area,count(*) as num")
+        ->many();
+    toCsv(
+        $areaData,
+        ["区服", "数量"],
+        $dir . "/区服统计.csv"
+    );
+}
 
-    /*各区统计*/
+/**
+ * 区 职业 层的统计
+ */
+function exportAreaJobPassData()
+{
+    $config = getConfig();
+    $dbFile = date("Y-m-d") . "dn_rank.db";
+    $db     = new Sparrow();
+    $db->setDb(["type" => "sqlite3", "database" => $dbFile]);
+
+    $dir = "./rankdata/" . date("Y-m-d") . "/区职业层数";
+    if (!is_dir($dir)) {
+        mkdir($dir);
+    }
+
+    /*职业 层数*/
+    /*职业 区*/
+    /*区 层数*/
+    /*统计各个层区服分布*/
+    $tempAreaPassData = $db->from("rank_data")
+        ->groupBy("pass_num,dn_area")
+        ->sortDesc("pass_num")
+        ->sortDesc("num")
+        ->select("pass_num,dn_area,count(*) as num")
+        ->many();
+    $tempAreaData     = [];
+    foreach ($tempAreaPassData as $k => $v) {
+        $tempAreaData[$v["dn_area"]][1000]           = $v["dn_area"];
+        $tempAreaData[$v["dn_area"]][$v["pass_num"]] = $v["num"];
+    }
+    foreach ($tempAreaData as $tk => $tv) {
+        foreach ($config["pass"] as $pk => $pv) {
+            if (!isset($tv[$pv])) {
+                $tempAreaData[$tk][$pv] = 0;
+            }
+        }
+        krsort($tempAreaData[$tk]);
+    }
+
+    toCsv(
+        array_values($tempAreaData),
+        array_merge(["区服"], $config["pass"]),
+        $dir . "/层数区服统计.csv"
+    );
+
+    /*职业层数*/
+    $tempJobPassData = $db->from("rank_data")
+        ->groupBy("dn_job,pass_num")
+        ->sortDesc("pass_num")
+        ->sortDesc("num")
+        ->select("pass_num,dn_job,count(*) as num")
+        ->many();
+    $tempJobData     = [];
+    foreach ($tempJobPassData as $k => $v) {
+        $tempJobData[$v["dn_job"]][1000]           = $v["dn_job"];
+        $tempJobData[$v["dn_job"]][$v["pass_num"]] = $v["num"];
+    }
+    foreach ($tempJobData as $tk => $tv) {
+        foreach ($config["pass"] as $pk => $pv) {
+            if (!isset($tv[$pv])) {
+                $tempJobData[$tk][$pv] = 0;
+            }
+        }
+        krsort($tempJobData[$tk]);
+    }
+    toCsv(
+        array_values($tempJobData),
+        array_merge(["职业"], $config["pass"]),
+        $dir . "/层数职业统计.csv"
+    );
+    /*职业区服统计*/
+    $tempJobAreaData = $db->from("rank_data")
+        ->groupBy("dn_job,dn_area")
+        ->sortDesc("num")
+        ->select("dn_area,dn_job,count(*) as num")
+        ->many();
+    $tempJobData     = [];
+    foreach ($tempJobAreaData as $k => $v) {
+        $tempJobData[$v["dn_job"]][1000]          = $v["dn_job"];
+        $tempJobData[$v["dn_job"]][$v["dn_area"]] = $v["num"];
+    }
+    $tempResultData = [];
+    foreach ($config["job"] as $jk => $jv) {
+        $tempData    = [];
+        $tempData[0] = $jv;
+        foreach ($config["area"] as $ak => $av) {
+            $tempData[$av] = isset($tempJobData[$jv][$av])
+                ? $tempJobData[$jv][$av] : 0;
+        }
+        $tempResultData[] = $tempData;
+    }
+    toCsv(
+        array_values($tempResultData),
+        array_merge(["职业"], $config["area"]),
+        $dir . "/职业区服统计.csv"
+    );
+    exit;
 
 }
 
+/**
+ * 工会数据统计
+ */
+function exportGroupData()
+{
+    $config = getConfig();
+    $dbFile = date("Y-m-d") . "dn_rank.db";
+    $db     = new Sparrow();
+    $db->setDb(["type" => "sqlite3", "database" => $dbFile]);
+
+    $dir = "./rankdata/" . date("Y-m-d") . "/工会/";
+    if (!is_dir($dir)) {
+        mkdir($dir);
+    }
+
+    /*统计各个工会的职业*/
+    $groupData = [];
+    foreach ($config["area"] as $k => $v) {
+        $groupJobData = [];
+        /*各个工会的职业*/
+        $tempGroupJobData = $db->from("rank_data")
+            ->where("dn_group <> ''")
+            ->where("dn_area", $v)
+            ->groupBy("dn_group,dn_job")
+            ->sortDesc("num")
+            ->select("dn_group,dn_job,count(*) as num")
+            ->many();
+        $tempGroupData    = [];
+        foreach ($tempGroupJobData as $tk => $tv) {
+            if (!isset($tempGroupData[$tv["dn_group"]])) {
+                $tempGroupData[$tv["dn_group"]] = [];
+            }
+            $tempGroupData[$tv["dn_group"]][$tv["dn_job"]] = $tv["num"];
+        }
+        foreach ($tempGroupData as $tk => $tv) {
+            if (!isset($groupJobData[$tk])) {
+                $groupJobData[$tk] = [];
+            }
+            $tempData = [];
+            foreach ($config["job"] as $jk => $jv) {
+                $tempData [$jv] = isset($tv[$jv])
+                    ? $tv[$jv]
+                    : 0;
+            }
+            $groupJobData[$tk] = array_merge($groupJobData[$tk], array_values($tempData));
+        }
+        foreach ($groupJobData as $tk => $tv) {
+            array_unshift($groupJobData[$tk], $tk);
+            array_unshift($groupJobData[$tk], $v);
+        }
+        $groupData = array_merge($groupData, array_values($groupJobData));
+    }
+
+    $areaGroupHead = ["区服", "工会"];
+    $areaGroupHead = array_merge($areaGroupHead, $config["job"]);
+    toCsv(
+        array_values($groupData),
+        $areaGroupHead,
+        $dir . "/工会职业统计.csv"
+    );
+
+    /*统计各个工会的层数*/
+    $groupData = [];
+    foreach ($config["area"] as $k => $v) {
+        $groupJobData      = [];
+        $tempGroupPassData = $db->from("rank_data")
+            ->where("dn_group <> ''")
+            ->where("dn_area", $v)
+            ->groupBy("dn_group,pass_num")
+            ->sortDesc("pass_num")
+            ->select("dn_group,pass_num,count(*) as num")
+            ->many();
+        $tempPassData      = [];
+        foreach ($tempGroupPassData as $tk => $tv) {
+            if (!isset($tempPassData[$tv["dn_group"]])) {
+                $tempPassData[$tv["dn_group"]] = [];
+            }
+            $tempPassData[$tv["dn_group"]][$tv["pass_num"]] = $tv["num"];
+        }
+
+        foreach ($tempPassData as $tk => $tv) {
+            if (!isset($groupJobData[$tk])) {
+                $groupJobData[$tk] = [];
+            }
+            $tempData = [];
+            foreach ($config["pass"] as $pk => $pv) {
+                $tempData [$pv] = isset($tv[$pv])
+                    ? $tv[$pv]
+                    : 0;
+            }
+            $groupJobData[$tk] = array_merge($groupJobData[$tk], array_values($tempData));
+        }
+
+        foreach ($groupJobData as $tk => $tv) {
+            array_unshift($groupJobData[$tk], $tk);
+            array_unshift($groupJobData[$tk], $v);
+        }
+        $groupData = array_merge($groupData, array_values($groupJobData));
+    }
+
+    $areaGroupHead = ["区服", "工会"];
+    $areaGroupHead = array_merge($areaGroupHead, $config["pass"]);
+    toCsv(
+        array_values($groupData),
+        $areaGroupHead,
+        $dir . "/工会层数统计.csv"
+    );
+
+
+    /*各区工会人数*/
+    $areaGroupData = $db->from("rank_data")
+        ->groupBy(["area_id", "dn_group"])
+        ->sortDesc("num")
+        ->select("dn_area,dn_group,count(*) as num")
+        ->many();
+    $tempAreaGroup = [];
+    foreach ($areaGroupData as $k => $v) {
+        if (!isset($tempAreaGroup[$v["dn_area"]])) {
+            $tempAreaGroup[$v["dn_area"]] = [];
+        }
+        if ($v["dn_group"]) {
+            $tempAreaGroup[$v["dn_area"]][] = [
+                $v["dn_area"],
+                $v["dn_group"],
+                $v["num"]
+            ];
+        }
+    }
+    $areaResultData = [];
+    foreach ($tempAreaGroup as $tk => $v) {
+        $areaResultData = array_merge($areaResultData, $v);
+    }
+    toCsv(
+        $areaResultData,
+        ["区分", "工会", "人数"],
+        $dir . "/各区工会统计.csv"
+    );
+}
+
+function toCSV($data, $colHeaders, $file)
+{
+    $stream = fopen("php://temp/maxmemory", "w+");
+    if (!empty($colHeaders)) {
+        fputcsv($stream, $colHeaders);
+    }
+    foreach ($data as $record) {
+        fputcsv($stream, $record);
+    }
+
+    rewind($stream);
+    $content = stream_get_contents($stream);
+    fclose($stream);
+    file_put_contents($file, $content);
+    echo $file . "生成成功" . PHP_EOL;
+}
+
+//getDataToDb();
 function getDataToDb()
 {
     $startTime = date("H:i:s");
@@ -58,7 +360,7 @@ function getDataToDb()
             $insertSql = $db->from('rank_data')
                 ->insert($v)
                 ->sql();
-            echo $insertSql . PHP_EOL;
+//            echo $insertSql . PHP_EOL;
             $db->sql($insertSql)->execute();
         }
         echo $fv . "写入完成" . PHP_EOL;
@@ -66,6 +368,8 @@ function getDataToDb()
     $endTime = date("H:i:s");
 
     echo "开始于" . $startTime . "结束于" . $endTime . PHP_EOL;
+    /*查看总数*/
+    getDbData();
 }
 
 //getAreaJobPassData();
@@ -369,7 +673,7 @@ function dbInit()
     $db->sql($dn_sql)->execute();
 }
 
-getDbData();
+//getDbData();
 function getDbData()
 {
     $dir = "./dndata/" . date("Y-m-d");
@@ -387,6 +691,8 @@ function getDbData()
     $db     = new Sparrow();
     $db->setDb(["type" => "sqlite3", "database" => $dbFile]);
     $result = $db->from('rank_data')->count();
+    var_dump([$num, $result]);
+    return [$num, $result];
 }
 
 
