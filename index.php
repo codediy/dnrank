@@ -25,7 +25,7 @@ exportData();
 function exportData()
 {
     /*统计各个层,区,职业总人数*/
-//    exportNumData();
+    exportNumData();
     /*统计层,区,职业关联人数*/
     exportAreaJobPassData();
 }
@@ -40,10 +40,15 @@ function exportNumData()
     $db     = new Sparrow();
     $db->setDb(["type" => "sqlite3", "database" => $dbFile]);
 
-    $dir = "./rankdata/" . date("Y-m-d") . "/总数";
+    $dir = "./rankdata/" . date("Y-m-d");
     if (!is_dir($dir)) {
         mkdir($dir);
     }
+    $dir .= "/总数";
+    if (!is_dir($dir)) {
+        mkdir($dir);
+    }
+
     /*层数人数统计*/
     $Jobdata = $db->from("rank_data")
         ->groupBy("pass_num")
@@ -89,7 +94,11 @@ function exportAreaJobPassData()
     $db     = new Sparrow();
     $db->setDb(["type" => "sqlite3", "database" => $dbFile]);
 
-    $dir = "./rankdata/" . date("Y-m-d") . "/区职业层数";
+    $dir = "./rankdata/" . date("Y-m-d");
+    if (!is_dir($dir)) {
+        mkdir($dir);
+    }
+    $dir .= "/区职业层数";
     if (!is_dir($dir)) {
         mkdir($dir);
     }
@@ -157,14 +166,14 @@ function exportAreaJobPassData()
         ->many();
     $tempJobData     = [];
     foreach ($tempJobAreaData as $k => $v) {
-        $tempJobData[$v["dn_job"]][1000]          = $v["dn_job"];
-        $tempJobData[$v["dn_job"]][$v["dn_area"]] = $v["num"];
+        $tempJobData[$v["dn_area"]][1000]         = $v["dn_area"];
+        $tempJobData[$v["dn_area"]][$v["dn_job"]] = $v["num"];
     }
     $tempResultData = [];
-    foreach ($config["job"] as $jk => $jv) {
+    foreach ($config["area"] as $jk => $jv) {
         $tempData    = [];
         $tempData[0] = $jv;
-        foreach ($config["area"] as $ak => $av) {
+        foreach ($config["job"] as $ak => $av) {
             $tempData[$av] = isset($tempJobData[$jv][$av])
                 ? $tempJobData[$jv][$av] : 0;
         }
@@ -172,7 +181,7 @@ function exportAreaJobPassData()
     }
     toCsv(
         array_values($tempResultData),
-        array_merge(["职业"], $config["area"]),
+        array_merge(["职业"], $config["job"]),
         $dir . "/职业区服统计.csv"
     );
     exit;
