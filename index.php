@@ -21,13 +21,108 @@ function dataLog($data, $file = "test.json")
     file_put_contents($dir . "/" . $file, json_encode($data, JSON_UNESCAPED_UNICODE));
 }
 
-exportData();
+//exportData();
 function exportData()
 {
     /*统计各个层,区,职业总人数*/
     exportNumData();
     /*统计层,区,职业关联人数*/
     exportAreaJobPassData();
+}
+
+//test();
+function test()
+{
+    $dbFile = date("Y-m-d") . "dn_rank.db";
+    $db     = new Sparrow();
+    $db->setDb(["type" => "sqlite3", "database" => $dbFile]);
+
+    $tempData = $db->from("rank_data")
+        ->where("area_id", 18)
+        ->sortDesc("pass_num")
+        ->sortAsc("pass_time")
+        ->limit(15, 0)
+        ->many();
+
+    var_dump($tempData);
+}
+
+/**
+ * 各职业前15
+ */
+exportRank15();
+function exportRank15()
+{
+    $config = getConfig();
+    $dbFile = date("Y-m-d") . "dn_rank.db";
+    $db     = new Sparrow();
+    $db->setDb(["type" => "sqlite3", "database" => $dbFile]);
+
+    $dir = "./rankdata/" . date("Y-m-d");
+    if (!is_dir($dir)) {
+        mkdir($dir);
+    }
+    $dir .= "/职业排行";
+    if (!is_dir($dir)) {
+        mkdir($dir);
+    }
+
+    $allData = [];
+    $area    = array_merge([0 => "全区"], $config["area"]);
+    foreach ($area as $ak => $av) {
+        $jobData = [];
+        if ($ak > 0) {
+            foreach ($config["job"] as $k => $v) {
+                $tempData    = $db->from("rank_data")
+                    ->where("dn_area", $av)
+                    ->where("job_id", $k)
+                    ->sortDesc("pass_num")
+                    ->sortAsc("pass_time")
+                    ->limit(15, 0)
+                    ->many();
+                $jobData[$v] = $tempData;
+            }
+        } else {
+            foreach ($config["job"] as $k => $v) {
+                $tempData    = $db->from("rank_data")
+                    ->where("job_id", $k)
+                    ->sortDesc("pass_num")
+                    ->sortAsc("pass_time")
+                    ->limit(15, 0)
+                    ->many();
+                $jobData[$v] = $tempData;
+            }
+        }
+
+        $tempResult = [];
+        foreach ($jobData as $jk => $jv) {
+            $tempResult[$jk] = [$jk];
+            foreach ($jv as $tk => $tv) {
+                $tempResult[$jk][] = $tv["dn_area"]
+                    . "\n" . $tv["dn_group"]
+                    . "\n" . $tv["dn_name"]
+                    . "\n" . $tv["pass_num"]
+                    . "\n" . $tv["pass_time_string"];
+
+            }
+        }
+        $tempHead = ["职业"];
+        for ($i = 1; $i <= 15; $i++) {
+            $tempHead[] = $i;
+        }
+        $allData[$av] = $tempResult;
+    }
+    $tempHead = ["区服"];
+    for ($i = 1; $i <= 15; $i++) {
+        $tempHead[] = $i;
+    }
+    foreach ($allData as $k => $v) {
+        toCsv(
+            array_values($v),
+            $tempHead,
+            $dir . "/" . $k . "统计.csv"
+        );
+    }
 }
 
 /**
